@@ -1,0 +1,4 @@
+LINEAR_API_KEY=replace-with-read-only-linear-api-key
+LINEAR_WEBHOOK_SECRET=replace-with-linear-webhook-signing-secret
+MCP_AUTH_TOKEN=replace-with-random-mcp-token
+ADMIN_AUTH_TOKEN=replace-with-different-random-admin-token
