@@ -1,6 +1,6 @@
 # linear-eye
 
-A read-only MCP server for Linear. It stores current snapshots and observed changes in Cloudflare D1, then answers questions about current work, project and milestone progress, member activity, and weekly reports.
+A read-only dashboard and MCP server for Linear. It stores current snapshots and observed changes in Cloudflare D1, then answers questions about current work, project and milestone progress, member activity, and weekly reports.
 
 Linear remains the source of truth. The server does not modify Linear data or call an LLM.
 
@@ -12,6 +12,7 @@ Linear Webhook ─ HMAC + timestamp ─ Queue ─┐
 Linear GraphQL ─ full sync / daily Cron ──┘                         │
                                                                   ▼
 MCP client ─ Bearer ─ createMcpHandler ─ Effect intelligence ────── D1
+Browser ─ Cloudflare Access ─ /api ──── Effect intelligence ────── D1
 ```
 
 One Cloudflare Worker provides `fetch`, `queue`, and `scheduled` handlers. Cloudflare owns durable retries and scheduling; Effect manages application logic within each invocation.
@@ -26,10 +27,10 @@ See the [MVP specification](docs/mvp-spec.md), [Effect architecture decisions](d
 
 ## Prerequisites
 
-- Node.js 22 or newer and pnpm 10 for development and builds. The deployed application runs on Workers.
+- Node.js 22.12 or newer and pnpm 10 for development and builds. The deployed application runs on Workers.
 - A Cloudflare account with Workers, D1, and Queues access.
 - A **read-only** API key for one Linear workspace and permission to create webhooks.
-- A Streamable HTTP MCP client that supports a custom Bearer authorization header.
+- Cloudflare Access for browser login, or a Streamable HTTP MCP client that supports a custom Bearer authorization header.
 
 ## Local development
 
@@ -54,6 +55,8 @@ pnpm build
 
 Tests run in the Workers runtime with real local D1. They cover migrations, atomic rollback, duplicate and out-of-order webhooks, sync pagination and recovery, analytics, and MCP HTTP requests. Tests require no Linear or Cloudflare account. `pnpm build` performs a Wrangler deployment **dry run**; it does not deploy.
 
+`pnpm dev` builds the React dashboard and starts Wrangler. `pnpm dev:web` runs Vite with `/api` forwarded to the local Worker for frontend iteration. The API still requires a valid Access assertion locally; there is no development authentication bypass. Use signed test fixtures for automated checks or an Access-protected development deployment for browser login.
+
 ## Create D1 and Queues
 
 ```sh
@@ -63,7 +66,7 @@ pnpm exec wrangler queues create linear-eye-events
 pnpm exec wrangler queues create linear-eye-dead-letter
 ```
 
-Replace the placeholder UUID in `wrangler.jsonc` with the `database_id` returned by D1 creation before running a remote migration or deployment. Keep the binding names `DB` and `LINEAR_EYE_QUEUE`.
+Set `database_id` in `wrangler.jsonc` to the ID returned by D1 creation in your Cloudflare account before running a remote migration or deployment. Keep the binding names `DB` and `LINEAR_EYE_QUEUE`.
 
 ```sh
 pnpm db:migrate:remote
@@ -80,7 +83,7 @@ pnpm exec wrangler secret put LINEAR_API_KEY
 pnpm exec wrangler secret put LINEAR_WEBHOOK_SECRET
 pnpm exec wrangler secret put MCP_AUTH_TOKEN
 pnpm exec wrangler secret put ADMIN_AUTH_TOKEN
-pnpm deploy
+pnpm run deploy
 ```
 
 Copy the webhook signing secret from the webhook details in Linear. For a new installation without a webhook yet, deploy the Worker first, create the webhook using the next section, and then register its signing secret. Requests return 401 until the secret is configured. If a test delivery failed during setup, check that the webhook is active after registering the secret.
@@ -92,8 +95,27 @@ Keep production secrets out of `wrangler.jsonc`, source files, and commits. Non-
 | `REPORT_TIMEZONE` | `Asia/Seoul` | IANA timezone for date ranges and weekly reports |
 | `STALE_ISSUE_DAYS` | `5` | Days without an observed change before an in-progress issue is considered stale |
 | `PROJECT_UPDATE_BODY_LIMIT` | `8000` | Maximum stored ProjectUpdate body length in characters, capped at 8000 |
+| `ACCESS_TEAM_DOMAIN` | unset | Trusted `https://<team>.cloudflareaccess.com` issuer for dashboard login |
+| `ACCESS_AUD` | unset | Application Audience (AUD) tag from the dashboard's Access application |
 
 Reports use English headings. Set `REPORT_TIMEZONE` to the timezone your team uses; report language does not change date boundaries.
+
+## Dashboard and Cloudflare Access
+
+Open `https://<worker>/app/` for Team, Projects (including milestone details), and Activity. The English interface uses the same read-only Effect intelligence functions as MCP, displays tracking coverage and sync status, and supports activity filters and pagination. The Worker serves the built frontend assets; no separate Pages project is needed.
+
+Before using the dashboard, create one self-hosted Cloudflare Access application with two public hostname destinations:
+
+```text
+<worker-hostname>/app
+<worker-hostname>/api
+```
+
+These parent paths also protect their descendants. Include the parent paths themselves; `/app/*` alone does not cover `/app`. Add an Allow policy with an explicit list of approved email addresses and select an identity provider, such as One-time PIN. Use the same Access application for both paths so they share an audience and login session. Do not attach a whole-Worker Access policy: that would also require browser login for the Linear webhook and existing machine clients.
+
+Copy the application's AUD tag and your Zero Trust team domain into `ACCESS_AUD` and `ACCESS_TEAM_DOMAIN` under `vars` in `wrangler.jsonc`, then run `pnpm run deploy`. They are public verification settings, not secrets. Every `/api` request verifies the signed `Cf-Access-Jwt-Assertion` against the configured issuer's public keys, audience, and expiry, including on alternate Worker hostnames. Plain email headers and MCP/admin bearer tokens do not authorize dashboard access. Missing Access configuration or unavailable signing keys fail closed with HTTP 503; invalid or missing assertions return 401 when requests reach the Worker directly. API responses are private and never cached.
+
+Confirm that an anonymous visit to `/app/` and `/api/bootstrap` reaches Access login, the approved user can load all three views, and `/health`, `/mcp`, `/admin/*`, and `/webhooks/linear` retain their original behavior. Session expiry shows a sign-in action; Sign out uses Cloudflare Access logout. The dashboard has no write or sync controls.
 
 ## Configure the Linear webhook
 
@@ -132,6 +154,34 @@ curl "$WORKER_URL/admin/sync/<runId>" \
 Wait for `status: "completed"`. The response includes `pagesProcessed`, `entitiesProcessed`, and `error`. MCP tools return `SYNC_NOT_READY` until the first full sync completes.
 
 Full sync order: users → teams → workflow states → projects → project milestones → issues → project updates. Each Queue message processes one GraphQL page of up to 50 entities. A page receipt and its continuation are committed together, allowing retries to recover an enqueue failure after the database commit. Version checks prevent older sync pages or webhooks from overwriting newer snapshots.
+
+### Start a sync through Cloudflare
+
+Operators can also start a sync by publishing a JSON control message to `linear-eye-events` through the [Cloudflare Queues API](https://developers.cloudflare.com/queues/examples/publish-to-a-queue-via-http/). This requires Cloudflare permission to publish to the Queue. The Worker uses its deployed Linear secret; the message must not contain credentials.
+
+Generate a UUID once for the intended run, for example with `uuidgen`, and retain it. Send the following request body to `POST https://api.cloudflare.com/client/v4/accounts/<account-id>/queues/<queue-id>/messages`, authenticated with a Cloudflare API token:
+
+```json
+{
+  "content_type": "json",
+  "body": {
+    "kind": "sync-request",
+    "runId": "<run-uuid>",
+    "mode": "full"
+  }
+}
+```
+
+Use the **same UUID** when retrying an uncertain submission. Duplicate deliveries reuse the run, and a request whose run has already progressed or finished does not start it again. Reusing an ID with a different mode is rejected. Use a new UUID only when intentionally starting another run. `mode: "reconcile"` is also supported after the first full sync completes.
+
+The Queue API response confirms submission, not sync completion. Read the run through `/admin/sync/<run-uuid>` or through D1:
+
+```sh
+pnpm exec wrangler d1 execute linear-eye --remote \
+  --command "SELECT id, mode, status, pages_processed, entities_processed, error FROM sync_runs WHERE id = '<run-uuid>';"
+```
+
+Wait for `status = 'completed'`. A failed initial page enqueue remains retryable. If the control message exhausts its retries, it goes to the dead-letter queue and the run can remain `running`: an earlier send may already have succeeded. After resolving the delivery failure, resubmit the same UUID to recover that run. Actual page-processing failures still mark the run `failed` when their retries are exhausted; those terminal failures require a new run ID.
 
 ## Reconciliation and recovery
 
@@ -194,7 +244,7 @@ curl "$WORKER_URL/mcp" \
 
 ## Known limitations
 
-- One workspace, read-only. No OAuth, dashboard, Slack/GitHub integration, LLM calls, or issue-description/comment ingestion.
+- One workspace, read-only. No MCP OAuth, Slack/GitHub integration, LLM calls, or issue-description/comment ingestion. Browser login uses Cloudflare Access.
 - Bootstrap does not backfill historical activity. Reconciliation repairs snapshots without inventing missed intermediate events. Coverage describes the tracking window, not proof that every webhook arrived.
 - Issue change reports use `field_changes`. Creation and removal events, and events for other entities, are stored, but the MVP has no separate event-timeline tool.
 - Names and workflow state types use current metadata. Reports do not fully reproduce names as they appeared before a rename.

@@ -2,6 +2,8 @@
 
 > Implementation update: [Effect implementation direction](effect-direction.md) supersedes the original direct-binding database choice. The application uses Effect 4 RC, Effect SQL, and its D1 driver. The product requirements below remain in effect.
 
+> Dashboard extension (2026-09-29): the approved read-only browser dashboard supersedes this document's original web-dashboard exclusion. Team, Projects, milestone details, and Activity now share the existing intelligence functions through an Access-authenticated API on the same Worker. See [Dashboard and Cloudflare Access](../README.md#dashboard-and-cloudflare-access) for the current login and deployment contract. MCP bearer authentication and webhook verification remain separate.
+
 ## 1. Overview
 
 `linear-eye` collects Linear's current state and change history, stores them for analysis, and exposes intelligence about the team's work through MCP (Model Context Protocol).

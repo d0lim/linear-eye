@@ -64,6 +64,8 @@ The implemented services are:
 
 Programs obtain dependencies with `yield*` and are executed through `Effect.runPromise` at runtime boundaries. Pure projection and normalization helpers remain ordinary TypeScript functions. The MVP uses a small shared `Database` service rather than a separate repository interface for every entity; additional abstractions should follow actual requirements.
 
+The browser dashboard is another read-only transport boundary. Its HTTP routes verify a Cloudflare Access assertion before running the existing intelligence programs with the database/configuration Layer. Effect Schema validates query parameters, and typed failures map to HTTP errors. The React frontend receives report data through these routes; it has no Linear credentials or direct database access. Static assets are served by the same Worker.
+
 ## Validation and failures
 
 Treat external payloads as `unknown` and decode them with Effect Schema before using them. The implementation validates webhook envelopes, queue messages, GraphQL envelopes and entity nodes, and intelligence service inputs. Queue schemas are also reused when decoding persisted continuation messages.

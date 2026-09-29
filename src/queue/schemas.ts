@@ -35,7 +35,13 @@ export const SyncQueueMessageSchema = Schema.Struct({
   watermark: Schema.NullOr(utcTimestamp),
 });
 
-export const QueueMessageSchema = Schema.Union([WebhookQueueMessageSchema, SyncQueueMessageSchema]);
+export const SyncRequestQueueMessageSchema = Schema.Struct({
+  kind: Schema.Literal('sync-request'),
+  runId: Schema.String.check(Schema.isUUID()),
+  mode: Schema.Literals(['full', 'reconcile']),
+});
+
+export const QueueMessageSchema = Schema.Union([WebhookQueueMessageSchema, SyncQueueMessageSchema, SyncRequestQueueMessageSchema]);
 
 export const LinearWebhookSchema = Schema.Struct({
   type: nonEmptyString,

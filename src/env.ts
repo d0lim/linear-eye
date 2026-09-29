@@ -10,4 +10,7 @@ export interface Env {
   REPORT_TIMEZONE: string;
   STALE_ISSUE_DAYS: string;
   PROJECT_UPDATE_BODY_LIMIT: string;
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
+  ASSETS?: Fetcher;
 }

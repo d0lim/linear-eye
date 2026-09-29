@@ -4,7 +4,7 @@ Bug reports, documentation improvements, and focused pull requests are welcome. 
 
 ## Development setup
 
-Use Node.js 22 or newer and the pnpm version pinned in `package.json`.
+Use Node.js 22.12 or newer and the pnpm version pinned in `package.json`.
 
 ```sh
 pnpm install --frozen-lockfile
