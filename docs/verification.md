@@ -5,8 +5,8 @@ Verified locally and on Cloudflare on 2026-09-29. This record distinguishes loca
 | Check | Result |
 |---|---|
 | `pnpm check` | Passed |
-| `pnpm test` | 95 tests passed across 12 files |
-| `pnpm build` | Wrangler deployment dry run passed; 387.18 KiB gzip |
+| `pnpm test` | 139 tests passed across 16 files, including dashboard and Access coverage |
+| `pnpm build` | React assets and Wrangler deployment dry run passed; Worker 399.25 KiB gzip |
 | `pnpm db:migrate:local` | Initial migration applied successfully (38 statements) |
 | Actual `wrangler dev` `/health` | HTTP 200; correct service JSON |
 | Actual `wrangler dev` anonymous `/mcp` | HTTP 401 |
@@ -14,7 +14,7 @@ Verified locally and on Cloudflare on 2026-09-29. This record distinguishes loca
 | MCP HTTP initialization and tool listing | Exactly six read-only tools |
 | All six MCP HTTP tool calls | D1 only; no outgoing fetch |
 | Live Linear introspection | All collection fields, selections, pagination and updatedAt filters verified |
-| `pnpm run deploy` | Worker, Queue consumer, and daily Cron deployed successfully |
+| `pnpm run deploy` | Worker, dashboard assets, Queue consumer, and daily Cron deployed successfully |
 | Remote D1 migration | Initial migration applied successfully (38 statements) |
 | Hosted `/health` | Correct service JSON confirmed by the operator in a browser |
 | Hosted full sync | Queue request accepted through the Cloudflare API; run reached `completed` with no error, and snapshots were present in remote D1 |
@@ -33,11 +33,21 @@ The integration test submits a signed HTTP webhook, observes no D1 writes before
 
 The pinned Vitest Workers pool supports compatibility dates only through 2026-08-22, so automated tests use 2026-08-15. Attempting the deployment date 2026-09-29 was rejected before tests started. The separate Wrangler development-server smoke checks and deployment dry run use the configured deployment date; the full automated suite has not run against that newer runtime.
 
+## Dashboard and Access checks
+
+The dashboard API tests use signed RS256 assertions and a synthetic JWKS with real local D1. They verify trusted issuer/audience/expiry, rejection of forged signatures and plain email/bearer headers, alternate hostname protection, missing configuration, read-only methods, input errors, selectors, sync metadata, and team/project/milestone/activity responses. Asset tests cover prefix routing, redirects, HTML security headers, and separation from machine endpoints.
+
+A local Miniflare preview using compatibility date 2026-09-29, an ephemeral database, synthetic commerce data, and a fixture signing key exercised the built Worker and React assets. Browser checks covered Team, project selection, milestone details, Activity, 30-to-60-row pagination, empty results, JSON and HTML 503 responses with Retry, and a simulated expired session with sign-in recovery. Final browser checks confirmed optional filters can be cleared, a failed next page retains all loaded rows and retries the same cursor, and refreshing during a delayed third page leaves only the refreshed first page after the delayed response arrives. Desktop and 390px mobile layouts rendered without horizontal page overflow; no browser console errors were observed. These checks do not use production credentials or establish live identity verification.
+
+The hosted Access application was configured with `/app` and `/api` parent paths, an explicit email allow rule, One-time PIN, a 24-hour application session, and HttpOnly cookies. Anonymous visits to `/app/` and `/api/bootstrap` reached the expected Access login page. The API also verifies the signed assertion inside the Worker. The dashboard Worker and assets were deployed as version `458074a9-58e5-41e5-86d8-6e9848585c76`. Authenticated hosted dashboard acceptance remains pending until the operator's first Access login.
+
 ## Review and resolution
 
 `ce-code-review` completed its full review of the captured implementation (`status: complete`, run `20260929-105254-c029ac73`). It confirmed three P2 findings: oversized unknown history rejecting a webhook, an unbounded Linear request, and a timestamp rejection test dependent on setup speed. All three were fixed with regressions and included in the final verification above. There are no remaining confirmed findings.
 
 The separate D1 batch-accounting claim remained unconfirmed and was excluded from actionable defects. Bulk history insertion is retained as a bounded-statement improvement. The review evaluated the captured pre-fix source; the final test results verify the subsequent repairs, without claiming a second independent review.
+
+The dashboard review completed with `status: complete` (run `20260929-190230-a1a08966`). Six findings were applied in two batches: signing-key outages now return a retryable 503 (finding 1); pagination preserves results on failure, filters remain clearable, calendar dates retain their day, stale pages cannot append after refresh, and non-JSON service errors retain a retry action (findings 2, 3, 4, 5, and 7). The final suite adds regressions for signing-key service failures, unknown keys, timezone/date boundaries, and client error classification. Browser checks cover the pagination and filter repairs. No confirmed findings remain unresolved. The review covered the captured source before these repairs; the final checks verify the repairs without claiming a second independent review.
 
 ## English publication check
 
