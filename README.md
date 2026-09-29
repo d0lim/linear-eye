@@ -63,7 +63,7 @@ pnpm exec wrangler queues create linear-eye-events
 pnpm exec wrangler queues create linear-eye-dead-letter
 ```
 
-Replace the placeholder UUID in `wrangler.jsonc` with the `database_id` returned by D1 creation before running a remote migration or deployment. Keep the binding names `DB` and `LINEAR_EYE_QUEUE`.
+Set `database_id` in `wrangler.jsonc` to the ID returned by D1 creation in your Cloudflare account before running a remote migration or deployment. Keep the binding names `DB` and `LINEAR_EYE_QUEUE`.
 
 ```sh
 pnpm db:migrate:remote
@@ -80,7 +80,7 @@ pnpm exec wrangler secret put LINEAR_API_KEY
 pnpm exec wrangler secret put LINEAR_WEBHOOK_SECRET
 pnpm exec wrangler secret put MCP_AUTH_TOKEN
 pnpm exec wrangler secret put ADMIN_AUTH_TOKEN
-pnpm deploy
+pnpm run deploy
 ```
 
 Copy the webhook signing secret from the webhook details in Linear. For a new installation without a webhook yet, deploy the Worker first, create the webhook using the next section, and then register its signing secret. Requests return 401 until the secret is configured. If a test delivery failed during setup, check that the webhook is active after registering the secret.
@@ -132,6 +132,34 @@ curl "$WORKER_URL/admin/sync/<runId>" \
 Wait for `status: "completed"`. The response includes `pagesProcessed`, `entitiesProcessed`, and `error`. MCP tools return `SYNC_NOT_READY` until the first full sync completes.
 
 Full sync order: users → teams → workflow states → projects → project milestones → issues → project updates. Each Queue message processes one GraphQL page of up to 50 entities. A page receipt and its continuation are committed together, allowing retries to recover an enqueue failure after the database commit. Version checks prevent older sync pages or webhooks from overwriting newer snapshots.
+
+### Start a sync through Cloudflare
+
+Operators can also start a sync by publishing a JSON control message to `linear-eye-events` through the [Cloudflare Queues API](https://developers.cloudflare.com/queues/examples/publish-to-a-queue-via-http/). This requires Cloudflare permission to publish to the Queue. The Worker uses its deployed Linear secret; the message must not contain credentials.
+
+Generate a UUID once for the intended run, for example with `uuidgen`, and retain it. Send the following request body to `POST https://api.cloudflare.com/client/v4/accounts/<account-id>/queues/<queue-id>/messages`, authenticated with a Cloudflare API token:
+
+```json
+{
+  "content_type": "json",
+  "body": {
+    "kind": "sync-request",
+    "runId": "<run-uuid>",
+    "mode": "full"
+  }
+}
+```
+
+Use the **same UUID** when retrying an uncertain submission. Duplicate deliveries reuse the run, and a request whose run has already progressed or finished does not start it again. Reusing an ID with a different mode is rejected. Use a new UUID only when intentionally starting another run. `mode: "reconcile"` is also supported after the first full sync completes.
+
+The Queue API response confirms submission, not sync completion. Read the run through `/admin/sync/<run-uuid>` or through D1:
+
+```sh
+pnpm exec wrangler d1 execute linear-eye --remote \
+  --command "SELECT id, mode, status, pages_processed, entities_processed, error FROM sync_runs WHERE id = '<run-uuid>';"
+```
+
+Wait for `status = 'completed'`. A failed initial page enqueue remains retryable. If the control message exhausts its retries, it goes to the dead-letter queue and the run can remain `running`: an earlier send may already have succeeded. After resolving the delivery failure, resubmit the same UUID to recover that run. Actual page-processing failures still mark the run `failed` when their retries are exhausted; those terminal failures require a new run ID.
 
 ## Reconciliation and recovery
 

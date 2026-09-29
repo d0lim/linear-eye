@@ -27,4 +27,10 @@ export interface SyncQueueMessage {
   cursor: string | null;
   watermark: string | null;
 }
-export type QueueMessage = WebhookQueueMessage | SyncQueueMessage;
+
+export interface SyncRequestQueueMessage {
+  kind: 'sync-request';
+  runId: string;
+  mode: SyncMode;
+}
+export type QueueMessage = WebhookQueueMessage | SyncQueueMessage | SyncRequestQueueMessage;

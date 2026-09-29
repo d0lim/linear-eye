@@ -12,7 +12,7 @@
   "d1_databases": [{
     "binding": "DB",
     "database_name": "linear-eye",
-    "database_id": "00000000-0000-0000-0000-000000000000",
+    "database_id": "52778d34-fecd-4a0c-bb83-f5c06a6151f9",
     "migrations_dir": "migrations"
   }],
   "queues": {
