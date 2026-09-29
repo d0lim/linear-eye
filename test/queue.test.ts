@@ -18,7 +18,7 @@ describe('Worker queue and scheduling', () => {
     const timestamp = Date.now();
     const raw = JSON.stringify({ action: 'create', type: 'Issue', organizationId: 'org',
       webhookTimestamp: timestamp, createdAt: new Date(timestamp).toISOString(),
-      data: { id: 'i', identifier: 'PAY-10', title: 'A task', teamId: 't', stateId: 'started', assigneeId: 'alice',
+      data: { id: 'i', identifier: 'SHOP-10', title: 'Add guest checkout', teamId: 't', stateId: 'started', assigneeId: 'alice',
         updatedAt: new Date(timestamp).toISOString(), description: 'must not persist' } });
     const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.LINEAR_WEBHOOK_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const signed = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(raw)));
@@ -34,7 +34,7 @@ describe('Worker queue and scheduling', () => {
     await worker.queue(queued.batch, bindings);
     expect(queued.ack).toHaveBeenCalledOnce();
     expect(queued.retry).not.toHaveBeenCalled();
-    expect(await env.DB.prepare('SELECT identifier FROM issues WHERE id=?').bind('i').first('identifier')).toBe('PAY-10');
+    expect(await env.DB.prepare('SELECT identifier FROM issues WHERE id=?').bind('i').first('identifier')).toBe('SHOP-10');
     expect(await env.DB.prepare('SELECT COUNT(*) n FROM events').first('n')).toBe(1);
   });
 

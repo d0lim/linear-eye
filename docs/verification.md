@@ -5,8 +5,8 @@ Verified locally on 2026-09-29. This record describes observed checks, not produ
 | Check | Result |
 |---|---|
 | `pnpm check` | Passed |
-| `pnpm test` | 80 tests passed across 11 files |
-| `pnpm build` | Wrangler deployment dry run passed; 387.04 KiB gzip |
+| `pnpm test` | 81 tests passed across 11 files |
+| `pnpm build` | Wrangler deployment dry run passed; 386.98 KiB gzip |
 | `pnpm db:migrate:local` | Initial migration applied successfully (38 statements) |
 | Actual `wrangler dev` `/health` | HTTP 200; correct service JSON |
 | Actual `wrangler dev` anonymous `/mcp` | HTTP 401 |
@@ -31,6 +31,10 @@ The pinned Vitest Workers pool supports compatibility dates only through 2026-08
 `ce-code-review` completed its full review of the captured implementation (`status: complete`, run `20260929-105254-c029ac73`). It confirmed three P2 findings: oversized unknown history rejecting a webhook, an unbounded Linear request, and a timestamp rejection test dependent on setup speed. All three were fixed with regressions and included in the final verification above. There are no remaining confirmed findings.
 
 The separate D1 batch-accounting claim remained unconfirmed and was excluded from actionable defects. Bulk history insertion is retained as a bounded-statement improvement. The review evaluated the captured pre-fix source; the final test results verify the subsequent repairs, without claiming a second independent review.
+
+## English publication check
+
+The public repository documentation and deterministic weekly Markdown template use English. The publication update passed the full 81-test suite, type checking, and deployment dry run. Weekly report regressions verify every English heading, the `None` fallback, and Markdown escaping. Documentation review checked command examples, configuration, MIT license metadata, and translated specification structure; the documented scope-change heading was aligned with the runtime.
 
 ## Operational acceptance after configuration
 

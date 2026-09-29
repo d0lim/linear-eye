@@ -5,14 +5,14 @@ import { runDb, seed } from './helpers';
 
 async function base() {
   await seed("INSERT INTO meta(key,value,updated_at) VALUES ('tracking_started_at','2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z'),('last_full_sync_completed_at','2026-09-01T01:00:00.000Z','2026-09-01T01:00:00.000Z')");
-  await seed("INSERT INTO projects(id,name) VALUES ('p','Custody'),('p2','Other')");
-  await seed("INSERT INTO project_milestones(id,project_id,name) VALUES ('m','p','Beta'),('m2','p2','Beta')");
+  await seed("INSERT INTO projects(id,name) VALUES ('p','Storefront'),('p2','Other')");
+  await seed("INSERT INTO project_milestones(id,project_id,name) VALUES ('m','p','Checkout'),('m2','p2','Checkout')");
   await seed("INSERT INTO users(id,name) VALUES ('alice','Alice'),('bob','Bob')");
   for (const state of ['completed', 'started', 'unstarted', 'backlog', 'canceled']) await seed('INSERT INTO workflow_states(id,team_id,name,type) VALUES (?,?,?,?)', [state, 'team', state, state]);
 }
 async function issue(id: string, state: string, estimate: number | null = null, extra: { archived?: boolean; deleted?: boolean; assignee?: string } = {}) {
   await seed('INSERT INTO issues(id,identifier,title,team_id,state_id,project_id,project_milestone_id,assignee_id,estimate,last_synced_at,updated_at,archived_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-    [id, `PAY-${id}`, `Issue ${id}`, 'team', state, 'p', 'm', extra.assignee ?? 'alice', estimate, '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', extra.archived ? '2026-09-02T00:00:00.000Z' : null, extra.deleted ? '2026-09-02T00:00:00.000Z' : null]);
+    [id, `SHOP-${id}`, `Update product ${id}`, 'team', state, 'p', 'm', extra.assignee ?? 'alice', estimate, '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z', extra.archived ? '2026-09-02T00:00:00.000Z' : null, extra.deleted ? '2026-09-02T00:00:00.000Z' : null]);
 }
 describe('progress intelligence', () => {
   test('requires completed bootstrap and preserves error contract', async () => {
@@ -27,11 +27,11 @@ describe('progress intelligence', () => {
     await issue('canceled', 'canceled', 100);
     await issue('archived', 'completed', 100, { archived: true });
     await issue('deleted', 'completed', 100, { deleted: true });
-    const result = await runDb(getProjectProgress({ project: 'Custody' }));
+    const result = await runDb(getProjectProgress({ project: 'Storefront' }));
     expect(result.issueCount).toMatchObject({ total: 10, completed: 6, started: 2, unstarted: 2, canceled: 1 });
     expect(result.progress).toEqual({ byCount: 0.6, byEstimate: 0.5 });
     expect(result.milestones).toHaveLength(1);
-    const milestone = await runDb(getMilestoneProgress({ project: 'p', milestone: 'Beta' }));
+    const milestone = await runDb(getMilestoneProgress({ project: 'p', milestone: 'Checkout' }));
     expect(milestone.milestone.id).toBe('m');
     expect(milestone.issues.remaining).toHaveLength(2);
     expect(milestone.issues.completed).toHaveLength(6);
@@ -57,7 +57,7 @@ describe('progress intelligence', () => {
     await issue('20', 'started', null, { assignee: 'bob' });
     await seed("INSERT INTO events(id,entity_type,entity_id,action,occurred_at,received_at,source) VALUES ('recent','Issue','10','update','2099-01-01T00:00:00.000Z','2099-01-01T00:00:00.000Z','webhook')");
     const report = await runDb(getTeamCurrentWork({}));
-    expect(report.members.map((member) => [member.user.id, member.issues.map((item) => item.identifier)])).toEqual([['alice', ['PAY-10']], ['bob', ['PAY-20']]]);
+    expect(report.members.map((member) => [member.user.id, member.issues.map((item) => item.identifier)])).toEqual([['alice', ['SHOP-10']], ['bob', ['SHOP-20']]]);
     expect(report.members[0].issues[0]).toMatchObject({ stale: false, daysSinceActivity: 0, lastActivityAt: '2099-01-01T00:00:00.000Z' });
     const withoutStale = await runDb(getTeamCurrentWork({ includeStale: false }));
     expect(withoutStale.members.flatMap((member) => member.issues).every((item) => !item.stale)).toBe(true);

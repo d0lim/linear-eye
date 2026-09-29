@@ -37,18 +37,18 @@ export const getMemberActivity = (input: MemberActivityInput) => Effect.gen(func
 function uniqueIssues(changes: ReadonlyArray<Change>) { return [...new Map(changes.map((change) => [change.issue.id, change])).values()]; }
 function markdownText(value: string): string { return value.replace(/[\r\n]+/g, ' ').replace(/[\\`*_{}\[\]<>#|]/g, '\\$&'); }
 function valueText(value: ChangeValue): string {
-  if (value === null) return '없음';
+  if (value === null) return 'None';
   return markdownText(typeof value === 'object' ? value.name ?? value.id : String(value));
 }
 function draft(completed: Change[], started: Change[], reopened: Change[], scopeChanges: Change[], current: ReturnType<typeof issueRef>[]): string {
   const issueLine = (issue: { id: string; identifier: string | null; title: string | null }) => `- ${markdownText(issue.identifier ?? issue.id)} — ${markdownText(issue.title ?? '')}`;
   const sections: string[] = [];
   const section = (title: string, lines: string[]) => { if (lines.length) sections.push(`## ${title}\n\n${lines.join('\n')}`); };
-  section('완료', uniqueIssues(completed).map((change) => issueLine(change.issue)));
-  section('진행 시작', uniqueIssues(started).map((change) => issueLine(change.issue)));
-  section('재개', uniqueIssues(reopened).map((change) => issueLine(change.issue)));
-  section('진행 중', current.map(issueLine));
-  section('주요 변경', scopeChanges.map((change) => `- ${markdownText(change.issue.identifier ?? change.issue.id)} — ${change.field}: ${valueText(change.before)} → ${valueText(change.after)}`));
+  section('Completed', uniqueIssues(completed).map((change) => issueLine(change.issue)));
+  section('Started', uniqueIssues(started).map((change) => issueLine(change.issue)));
+  section('Reopened', uniqueIssues(reopened).map((change) => issueLine(change.issue)));
+  section('In progress', current.map(issueLine));
+  section('Scope changes', scopeChanges.map((change) => `- ${markdownText(change.issue.identifier ?? change.issue.id)} — ${change.field}: ${valueText(change.before)} → ${valueText(change.after)}`));
   return sections.join('\n\n');
 }
 export const getWeeklyReport = (input: WeeklyReportInput) => Effect.gen(function* () {

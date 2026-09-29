@@ -9,7 +9,7 @@ async function fixture() {
   await seed("INSERT INTO users(id,name,display_name,email) VALUES ('alice','Alice Kim','alice','alice@example.com'),('bob','Bob Kim','bob','bob@example.com')");
   await seed("INSERT INTO projects(id,name) VALUES ('p','Original'),('p2','New')");
   for (const state of ['unstarted', 'started', 'completed']) await seed('INSERT INTO workflow_states(id,team_id,name,type) VALUES (?,?,?,?)', [state, 't', state, state]);
-  await seed("INSERT INTO issues(id,identifier,title,team_id,state_id,assignee_id,project_id,last_synced_at) VALUES ('i','PAY-123','Payments','t','completed','bob','p2','2026-09-01T00:00:00.000Z')");
+  await seed("INSERT INTO issues(id,identifier,title,team_id,state_id,assignee_id,project_id,last_synced_at) VALUES ('i','SHOP-123','Checkout','t','completed','bob','p2','2026-09-01T00:00:00.000Z')");
 }
 async function event(id: string, time: string, changes: [string, unknown, unknown][]) {
   await seed('INSERT INTO events(id,entity_type,entity_id,actor_id,actor_name,action,occurred_at,received_at,source) VALUES (?,?,?,?,?,?,?,?,?)', [id, 'Issue', 'i', 'bob', 'Bob Kim', 'update', time, time, 'webhook']);
@@ -50,10 +50,10 @@ test('issue changes are chronological and pagination excludes the next local mid
   await fixture();
   await event('monday', '2026-09-20T15:00:00.000Z', [['state', 'unstarted', 'started']]);
   await event('wednesday', '2026-09-23T01:00:00.000Z', [['assignee', 'alice', 'bob']]);
-  await event('friday', '2026-09-25T01:00:00.000Z', [['project_milestone', 'beta', 'ga']]);
+  await event('friday', '2026-09-25T01:00:00.000Z', [['project_milestone', 'checkout', 'launch']]);
   await event('nextweek', '2026-09-27T15:00:00.000Z', [['priority', 3, 2]]);
   await seed("UPDATE issues SET deleted_at='2026-09-28T00:00:00.000Z' WHERE id='i'");
-  const first = await runDb(getChanges({ issue: 'PAY-123', from: '2026-09-21', to: '2026-09-27', limit: 2 }));
+  const first = await runDb(getChanges({ issue: 'SHOP-123', from: '2026-09-21', to: '2026-09-27', limit: 2 }));
   expect(first.changes.map((change) => change.eventId)).toEqual(['monday', 'wednesday']);
   expect(first.truncated).toBe(true);
   expect(first.nextCursor).not.toBeNull();

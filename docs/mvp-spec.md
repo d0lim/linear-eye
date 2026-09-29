@@ -1,20 +1,22 @@
 # linear-eye — MVP Specification
 
+> Implementation update: [Effect implementation direction](effect-direction.md) supersedes the original direct-binding database choice. The application uses Effect 4 RC, Effect SQL, and its D1 driver. The product requirements below remain in effect.
+
 ## 1. Overview
 
-`linear-eye`는 Linear의 현재 상태와 변경 이력을 수집하고, 이를 분석 가능한 형태로 저장한 뒤 MCP(Model Context Protocol)를 통해 팀의 업무 현황에 대한 intelligence를 제공하는 서버다.
+`linear-eye` collects Linear's current state and change history, stores them for analysis, and exposes intelligence about the team's work through MCP (Model Context Protocol).
 
-이 프로젝트가 해결하려는 핵심 문제는 다음과 같다.
+The project addresses the following problems:
 
-- PM / PO가 없는 개발팀에서 팀원별 현재 진행 업무를 파악하기 어렵다.
-- Linear Project / Milestone의 실제 진행도를 매번 직접 확인해야 한다.
-- 지난 며칠 또는 지난주 동안 무엇이 변경되었는지 추적하기 어렵다.
-- 주간 보고를 팀원들이 수기로 작성해야 한다.
-- Linear 자체에는 현재 상태는 있지만 시간축 기반 분석이 제한적이다.
+- Development teams without a PM or PO struggle to see what each member is working on.
+- Someone must manually check the actual progress of each Linear project and milestone.
+- Changes over the past few days or week are difficult to track.
+- Team members have to write weekly reports by hand.
+- Linear exposes current state, but analysis over time is limited.
 
-`linear-eye`는 Linear를 대체하지 않는다.
+`linear-eye` does not replace Linear.
 
-Linear를 **source of truth**로 유지하면서 그 위에 다음 계층을 추가한다.
+Linear remains the **source of truth**, with the following layers added above it:
 
 ```text
 Linear
@@ -28,84 +30,84 @@ MCP
 ChatGPT / Claude / Coding Agent
 ```
 
-MVP는 **read-only intelligence service**다.
+The MVP is a **read-only intelligence service**.
 
-Linear의 Issue, Project 등을 수정하는 기능은 제공하지 않는다.
+It does not modify Linear issues, projects, or other resources.
 
 ---
 
 # 2. Goals
 
-MVP는 다음 질문에 답할 수 있어야 한다.
+The MVP must be able to answer the following questions.
 
 ### Team activity
 
 ```text
-현재 팀원들은 각각 어떤 이슈를 진행하고 있어?
+Which issues is each team member currently working on?
 ```
 
 ### Member activity
 
 ```text
-Alice가 이번 주에 어떤 업무를 했어?
+What did Alice work on this week?
 ```
 
 ### Project progress
 
 ```text
-Custody 프로젝트 진행도가 어떻게 돼?
+How is the Storefront project progressing?
 ```
 
 ### Milestone progress
 
 ```text
-Custody 프로젝트의 Beta milestone 진행도 알려줘.
+Show the progress of the Checkout milestone in the Storefront project.
 ```
 
 ### Changes
 
 ```text
-지난주 동안 Linear에서 주요 변경 사항이 뭐였어?
+What were the main changes in Linear last week?
 ```
 
 ```text
-이번 주에 milestone이 변경된 이슈 알려줘.
+Which issues changed milestones this week?
 ```
 
 ### Weekly report
 
 ```text
-Alice의 이번 주 주간 보고 초안을 만들어줘.
+Draft Alice's weekly report for this week.
 ```
 
-MVP 완료 후 MCP client가 위 질문을 별도의 Linear API 호출 없이 `linear-eye` 데이터만 이용해 답할 수 있어야 한다.
+Once the MVP is complete, an MCP client must be able to answer these questions using only `linear-eye` data, without making additional Linear API calls.
 
 ---
 
 # 3. Non-goals
 
-다음 기능은 MVP 범위에서 제외한다.
+The following features are outside the MVP scope:
 
-- Linear Issue 생성
-- Linear Issue 수정
-- Linear Comment 작성
-- Project 수정
-- OAuth 기반 다중 workspace 지원
-- 웹 대시보드
+- Creating Linear issues
+- Editing Linear issues
+- Posting Linear comments
+- Editing projects
+- OAuth support for multiple workspaces
+- A web dashboard
 - Slack integration
 - GitHub integration
-- 자체 LLM 호출
-- 개인 생산성 점수 산출
-- 팀원 ranking
-- 업무량 평가
-- velocity 예측
-- 일정 완료 시점 AI 예측
-- 자연어 → Linear mutation
-- Linear comment 전체 ingest
-- Linear issue description 전체 ingest
-- historical Linear activity 전체 backfill
+- Calling an LLM from the service
+- Individual productivity scores
+- Ranking team members
+- Evaluating workloads
+- Predicting velocity
+- AI predictions of completion dates
+- Natural language to Linear mutations
+- Ingesting all Linear comments
+- Ingesting full Linear issue descriptions
+- Backfilling all historical Linear activity
 
-MVP는 단일 Linear Workspace를 대상으로 한다.
+The MVP targets a single Linear workspace.
 
 ---
 
@@ -113,84 +115,82 @@ MVP는 단일 Linear Workspace를 대상으로 한다.
 
 ## 4.1 Linear is the source of truth
 
-현재 상태의 canonical source는 Linear다.
+Linear is the canonical source of current state.
 
-`linear-eye`의 데이터는 Linear를 분석하기 위한 projection/cache다.
+Data in `linear-eye` is a projection/cache used to analyze Linear.
 
-데이터 불일치가 발생했을 경우 Linear 상태를 우선한다.
+If data disagrees, Linear's state takes precedence.
 
 ---
 
 ## 4.2 Snapshot + Event History
 
-현재 상태와 변경 이력은 분리한다.
+Keep current state separate from change history.
 
 ```text
 Snapshot
 ────────────
-현재 누가 무엇을 하고 있는가?
+Who is working on what now?
 
 Event History
 ────────────
-언제 무엇이 어떻게 바뀌었는가?
+What changed, when, and how?
 ```
 
-예:
+For example, store this snapshot:
 
 ```text
 issues
-  PAY-123
+  SHOP-123
   state = Done
   assignee = Alice
 ```
 
-와 별도로:
+Separately, store the change history:
 
 ```text
 field_changes
 
-PAY-123
+SHOP-123
 Todo → In Progress
 
-PAY-123
+SHOP-123
 Alice → Bob
 
-PAY-123
+SHOP-123
 In Progress → Done
 ```
-
-을 저장한다.
 
 ---
 
 ## 4.3 Webhook first, GraphQL reconciliation second
 
-변경 사항 수집은 Linear Webhook을 primary mechanism으로 사용한다.
+Use Linear webhooks as the primary mechanism for collecting changes.
 
-GraphQL API는 다음 용도로만 사용한다.
+Use the GraphQL API only for:
 
-- 최초 bootstrap
-- periodic reconciliation
-- webhook으로 얻기 어려운 metadata 동기화
-- webhook 유실 복구
+- Initial bootstrap
+- Periodic reconciliation
+- Synchronizing metadata that is difficult to obtain through webhooks
+- Recovering from missed webhooks
 
-주기적 polling으로 Linear 전체를 지속적으로 조회하지 않는다.
+Do not continuously poll all Linear data.
 
-Linear 역시 업데이트 감지에는 polling 대신 webhook 사용을 권장한다.
+Linear also recommends webhooks instead of polling to detect updates.
 
 ---
 
 ## 4.4 Intelligence must be deterministic
 
-MVP 서버 내부에서 LLM을 호출하지 않는다.
+Do not call an LLM inside the MVP server.
 
-예:
+For example:
 
 ```text
 get_weekly_report()
 ```
 
-의 결과는 AI가 생성한 문장이 아니라 다음과 같은 사실 데이터다.
+returns factual data like the following, rather than AI-generated prose:
 
 ```json
 {
@@ -202,18 +202,16 @@ get_weekly_report()
 }
 ```
 
-필요하다면 deterministic Markdown draft도 함께 반환할 수 있다.
+The response may also include a deterministic Markdown draft.
 
-최종 자연어 요약은 MCP를 호출하는 ChatGPT / Claude가 수행한다.
+The MCP client, such as ChatGPT or Claude, produces the final natural-language summary.
 
-이 구조를 통해:
+This design supports:
 
-- Cloudflare 무료 운영 가능
-- hallucination 최소화
-- 분석 결과 근거 추적 가능
-- LLM vendor dependency 제거
-
-를 달성한다.
+- Operation on Cloudflare's free tier
+- Reduced hallucination
+- Traceable evidence for analysis results
+- Independence from LLM vendors
 
 ---
 
@@ -223,16 +221,16 @@ get_weekly_report()
 
 - TypeScript
 - Cloudflare Workers
-- Node.js application server 사용 금지
-- 별도 container 사용 금지
+- No Node.js application server
+- No separate containers
 
 ## Storage
 
 - Cloudflare D1
 
-KV를 primary database로 사용하지 않는다.
+Do not use KV as the primary database.
 
-현재 필요한 query는 다음과 같이 relational workload에 가깝다.
+The required queries are relational workloads, for example:
 
 ```sql
 WHERE assignee_id = ?
@@ -242,22 +240,22 @@ GROUP BY assignee
 GROUP BY state
 ```
 
-따라서 D1을 사용한다.
+Use D1 for this workload.
 
 ## Queue
 
-Cloudflare Queues를 사용한다.
+Use Cloudflare Queues.
 
-목적:
+Purposes:
 
-- Webhook 응답 latency 최소화
-- Webhook ingestion과 DB mutation 분리
-- retry 지원
-- initial/reconciliation sync pagination 처리
+- Minimize webhook response latency
+- Separate webhook ingestion from database writes
+- Support retries
+- Process pagination during initial sync and reconciliation
 
 ## MCP
 
-현재 Cloudflare의 stateless MCP 방식을 사용한다.
+Use Cloudflare's stateless MCP approach.
 
 Dependencies:
 
@@ -273,20 +271,20 @@ MCP endpoint:
 /mcp
 ```
 
-Cloudflare는 현재 신규 MCP 서버에 `createMcpHandler()` 기반 stateless Streamable HTTP 구성을 제공한다.
+Cloudflare provides stateless Streamable HTTP through `createMcpHandler()` for new MCP servers.
 
 ## Database access
 
-ORM을 사용하지 않는다.
+Do not use an ORM.
 
-Cloudflare D1 Worker Binding API와 SQL migration을 직접 사용한다.
+Use Effect SQL with the D1 driver and SQL migrations. The [Effect implementation direction](effect-direction.md) supersedes the original choice to call the D1 Worker binding directly from application code.
 
-목표:
+Goals:
 
-- bundle 최소화
-- query cost 명확화
-- D1-specific optimization 용이
-- schema 단순화
+- Keep the bundle small
+- Make query costs explicit
+- Allow D1-specific optimizations
+- Keep the schema simple
 
 ---
 
@@ -331,7 +329,7 @@ Cloudflare D1 Worker Binding API와 SQL migration을 직접 사용한다.
                   ChatGPT / Claude / Agent
 ```
 
-하나의 Cloudflare Worker 프로젝트에서 다음 handler를 모두 제공한다.
+A single Cloudflare Worker project provides all of these handlers:
 
 ```text
 fetch()
@@ -339,7 +337,7 @@ queue()
 scheduled()
 ```
 
-별도의 microservice로 분리하지 않는다.
+Do not split them into separate microservices.
 
 ---
 
@@ -351,7 +349,7 @@ scheduled()
 GET /health
 ```
 
-Authentication 없음.
+No authentication required.
 
 Response:
 
@@ -362,9 +360,9 @@ Response:
 }
 ```
 
-DB health check는 하지 않는다.
+Do not query the database for health checks.
 
-health request마다 D1 read를 발생시키지 않기 위함이다.
+This avoids a D1 read on every health request.
 
 ---
 
@@ -374,9 +372,9 @@ health request마다 D1 read를 발생시키지 않기 위함이다.
 POST /webhooks/linear
 ```
 
-Linear webhook 전용 endpoint.
+Dedicated endpoint for Linear webhooks.
 
-처리 순서:
+Processing order:
 
 ```text
 read raw body
@@ -394,34 +392,32 @@ QUEUE.send()
 200
 ```
 
-Linear webhook signature는 raw HTTP body에 대한 HMAC-SHA256으로 검증한다.
+Verify the Linear webhook signature with HMAC-SHA256 over the raw HTTP body.
 
-검증 대상:
+Validate:
 
 ```text
 Linear-Signature
 Linear-Timestamp
 ```
 
-다음 조건을 만족하지 않으면 `401`.
+Return `401` unless the following condition holds:
 
 ```text
 abs(now - webhookTimestamp) <= 60 seconds
 ```
 
-중복 처리 식별자는:
+Use the following identifier for deduplication:
 
 ```text
 Linear-Delivery
 ```
 
-를 사용한다.
+Linear supplies a unique `Linear-Delivery` UUID for each webhook payload and retries if the handler does not return HTTP 200 within five seconds.
 
-Linear는 각 webhook payload에 고유 `Linear-Delivery` UUID를 전달하고, webhook handler가 5초 안에 HTTP 200을 반환하지 못하면 재시도한다.
+Do not write directly to D1 in the webhook endpoint.
 
-Webhook endpoint에서는 D1 write를 직접 수행하지 않는다.
-
-Queue enqueue까지만 수행한다.
+The endpoint only validates the request and enqueues it.
 
 ---
 
@@ -432,7 +428,7 @@ POST /mcp
 GET /mcp
 ```
 
-Cloudflare `createMcpHandler()`를 사용한다.
+Use Cloudflare's `createMcpHandler()`.
 
 Authentication:
 
@@ -440,13 +436,13 @@ Authentication:
 Authorization: Bearer <MCP_AUTH_TOKEN>
 ```
 
-인증 실패:
+Authentication failure:
 
 ```http
 401 Unauthorized
 ```
 
-MCP는 internet에 anonymous로 공개하지 않는다.
+Do not expose MCP anonymously on the internet.
 
 ---
 
@@ -479,9 +475,9 @@ Response:
 }
 ```
 
-실제 sync는 HTTP request 안에서 수행하지 않는다.
+Do not perform the sync inside the HTTP request.
 
-Queue에 첫 번째 sync job을 enqueue한다.
+Enqueue the first sync job instead.
 
 ---
 
@@ -497,7 +493,7 @@ Body:
 {}
 ```
 
-Queue 기반 incremental reconciliation을 시작한다.
+Start queue-based incremental reconciliation.
 
 ---
 
@@ -543,15 +539,15 @@ STALE_ISSUE_DAYS=5
 PROJECT_UPDATE_BODY_LIMIT=8000
 ```
 
-API key 및 token을 `wrangler.jsonc`에 직접 기록하지 않는다.
+Do not write API keys or tokens directly in `wrangler.jsonc`.
 
-Cloudflare secrets를 사용한다.
+Use Cloudflare secrets.
 
 ---
 
 # 9. Linear Webhook Subscription
 
-MVP에서는 다음 resource를 구독한다.
+Subscribe to these resources for the MVP:
 
 ```text
 Issue
@@ -560,7 +556,7 @@ ProjectUpdate
 User
 ```
 
-필요하다면 향후:
+Additional resources may be added later if needed:
 
 ```text
 Cycle
@@ -568,19 +564,17 @@ IssueLabel
 Comment
 ```
 
-를 추가한다.
+Do not ingest comments in the MVP.
 
-Comment는 MVP에서 ingest하지 않는다.
+Do not store issue descriptions either.
 
-Issue description 또한 저장하지 않는다.
-
-Linear의 data change webhook은 `create`, `update`, `remove` 이벤트를 제공하며 update 이벤트에는 이전 값이 `updatedFrom`으로 포함된다.
+Linear data-change webhooks provide `create`, `update`, and `remove` events. Update events include previous values in `updatedFrom`.
 
 ---
 
 # 10. Queue Message Types
 
-Queue에는 discriminated union을 사용한다.
+Represent queue messages as a discriminated union.
 
 ## Webhook message
 
@@ -611,11 +605,11 @@ type WebhookQueueMessage = {
 };
 ```
 
-`data`는 원본 webhook 전체를 넣지 않는다.
+Do not put the entire original webhook payload in `data`.
 
-entity별 projection을 적용한다.
+Apply a projection for each entity type.
 
-Issue에서 허용하는 필드 예:
+Example allowlisted issue fields:
 
 ```text
 id
@@ -641,11 +635,11 @@ canceledAt
 archivedAt
 ```
 
-description은 제거한다.
+Remove the description.
 
-알 수 없는 필드는 snapshot에는 저장하지 않는다.
+Do not store unknown fields in snapshots.
 
-단 `updatedFrom`에 포함된 변경 field는 field change history 생성을 위해 사용할 수 있다.
+Changed fields in `updatedFrom` may still be used to create field-change history.
 
 ---
 
@@ -674,17 +668,17 @@ type SyncQueueMessage = {
 };
 ```
 
-한 Queue consumer invocation은 한 GraphQL page만 처리한다.
+Each queue consumer invocation processes one GraphQL page.
 
-다음 page가 있으면 동일 resource의 다음 cursor를 enqueue한다.
+If another page exists, enqueue the next cursor for the same resource.
 
-마지막 page라면 다음 resource를 enqueue한다.
+After the last page, enqueue the next resource.
 
 ---
 
 # 11. Sync Order
 
-Full sync 순서는 다음과 같다.
+Run a full sync in this order:
 
 ```text
 users
@@ -702,18 +696,18 @@ issues
 project_updates
 ```
 
-각 resource는 Relay pagination을 사용한다.
+Each resource uses Relay pagination:
 
 ```text
 first: 50
 after: cursor
 ```
 
-Linear API는 cursor 기반 pagination을 사용하며 `pageInfo.hasNextPage`와 `endCursor`를 제공한다.
+The Linear API uses cursor-based pagination and provides `pageInfo.hasNextPage` and `endCursor`.
 
-Milestone query의 정확한 GraphQL collection field는 구현 시 현재 Linear GraphQL schema를 introspection해서 확인한다.
+During implementation, introspect the current Linear GraphQL schema to confirm the exact collection field for milestone queries.
 
-workspace-level milestone collection이 없으면:
+If no workspace-level milestone collection exists, traverse:
 
 ```text
 projects
@@ -721,17 +715,15 @@ projects
      → projectMilestones
 ```
 
-형태로 traverse한다.
-
-문서에 없는 operation 이름을 추측해서 hardcode하지 않는다.
+Do not guess and hardcode undocumented operation names.
 
 ---
 
 # 12. Reconciliation Strategy
 
-Webhook delivery만으로 데이터 정합성을 100% 가정하지 않는다.
+Do not assume that webhook delivery alone guarantees data consistency.
 
-하루 1회 GraphQL reconciliation을 수행한다.
+Run GraphQL reconciliation once per day.
 
 Cloudflare Cron:
 
@@ -739,15 +731,15 @@ Cloudflare Cron:
 18:00 UTC
 ```
 
-즉:
+Equivalent local time:
 
 ```text
 03:00 Asia/Seoul
 ```
 
-정도로 실행한다.
+Use approximately this schedule.
 
-Reconciliation 대상:
+Reconcile these resources:
 
 ```text
 users
@@ -757,54 +749,52 @@ project_milestones
 issues
 ```
 
-가능하다면 `updatedAt >= watermark` filter를 사용한다.
+Use an `updatedAt >= watermark` filter when available.
 
-현재 GraphQL schema에서 해당 filter가 지원되지 않을 경우:
+If the current GraphQL schema does not support that filter, use:
 
 ```text
 orderBy: updatedAt
 ```
 
-descending 결과를 가져오고 watermark 이전 데이터가 나오면 pagination을 중단한다.
+Fetch results in descending order and stop pagination when records precede the watermark.
 
-Linear 문서도 최근 변경 데이터를 가져와야 할 경우 `updatedAt` 정렬 사용을 안내한다.
+Linear's documentation also recommends sorting by `updatedAt` when fetching recently changed data.
 
-Reconciliation은 snapshot만 복구한다.
+Reconciliation repairs snapshots only.
 
-Webhook을 놓쳐 발생한 중간 event history까지 가짜로 생성하지 않는다.
+Do not invent intermediate event history for missed webhooks.
 
-예:
+Example:
 
 ```text
-실제 변경
+Actual changes
 
 A → B → C
 
-Webhook에서 B 이벤트 유실
+The webhook for event B is lost
 ```
 
-Reconciliation 결과:
+Reconciliation restores:
 
 ```text
 current snapshot = C
 ```
 
-까지는 복원하지만:
+It does not fabricate the following history:
 
 ```text
 A → B
 B → C
 ```
 
-라는 history를 만들어내지 않는다.
-
 ---
 
 # 13. Database Schema
 
-모든 timestamp는 UTC ISO-8601 string으로 저장한다.
+Store every timestamp as a UTC ISO-8601 string.
 
-예:
+Example:
 
 ```text
 2026-09-29T01:30:00.000Z
@@ -820,7 +810,7 @@ CREATE TABLE meta (
 );
 ```
 
-사용 key:
+Keys used:
 
 ```text
 tracking_started_at
@@ -886,9 +876,9 @@ CREATE TABLE workflow_states (
 );
 ```
 
-`type`은 Linear workflow state의 semantic type을 저장한다.
+`type` stores the semantic type of a Linear workflow state.
 
-예:
+Examples:
 
 ```text
 backlog
@@ -1017,15 +1007,13 @@ CREATE TABLE project_updates (
 );
 ```
 
-`body`는 최대:
+Store at most the following number of characters in `body`:
 
 ```text
 PROJECT_UPDATE_BODY_LIMIT
 ```
 
-까지만 저장한다.
-
-기본값:
+Default:
 
 ```text
 8000 characters
@@ -1037,7 +1025,7 @@ PROJECT_UPDATE_BODY_LIMIT
 
 ## events
 
-Webhook 하나당 event 하나를 생성한다.
+Create one event per webhook.
 
 ```sql
 CREATE TABLE events (
@@ -1065,9 +1053,9 @@ CREATE TABLE events (
 );
 ```
 
-`id`는 `Linear-Delivery`를 사용한다.
+Use `Linear-Delivery` as the `id`.
 
-따라서 webhook retry가 발생하더라도 동일 event가 중복 저장되지 않는다.
+This prevents duplicate events when a webhook is retried.
 
 `source`:
 
@@ -1075,13 +1063,13 @@ CREATE TABLE events (
 webhook
 ```
 
-MVP에서는 reconcile 결과를 event로 기록하지 않는다.
+Do not record reconciliation results as events in the MVP.
 
 ---
 
 ## field_changes
 
-하나의 update webhook에서 변경된 필드별 row를 저장한다.
+Store one row per field changed in an update webhook.
 
 ```sql
 CREATE TABLE field_changes (
@@ -1103,9 +1091,9 @@ CREATE TABLE field_changes (
 );
 ```
 
-`old_value`, `new_value`는 canonical JSON representation을 사용한다.
+Store `old_value` and `new_value` as canonical JSON representations.
 
-예:
+Examples:
 
 ```text
 "abc-user-id"
@@ -1113,19 +1101,19 @@ CREATE TABLE field_changes (
 null
 ```
 
-ID 생성:
+Generate the ID as:
 
 ```text
 ${eventId}:${fieldName}
 ```
 
-한 webhook에서 동일 field는 한 번만 변경된다고 가정한다.
+Assume each field changes at most once within a webhook.
 
 ---
 
 # 15. Field normalization
 
-Issue에서 다음 필드는 canonical field name으로 변환한다.
+Normalize the following issue fields to canonical names:
 
 ```text
 assigneeId
@@ -1159,27 +1147,25 @@ parentId
     → parent
 ```
 
-알 수 없는 변경 필드는:
+Store unknown changed fields using this name:
 
 ```text
 linear.<originalFieldName>
 ```
 
-으로 저장한다.
-
-예:
+Example:
 
 ```text
 linear.fooBar
 ```
 
-이를 통해 Linear에서 새로운 field가 추가되어도 변경 history를 완전히 버리지 않는다.
+This preserves change history when Linear introduces new fields.
 
 ---
 
 # 16. Indexes
 
-최소 다음 index를 생성한다.
+Create at least the following indexes:
 
 ```sql
 CREATE INDEX idx_issues_assignee
@@ -1222,87 +1208,79 @@ CREATE INDEX idx_project_updates_project
 ON project_updates(project_id, created_at);
 ```
 
-D1 Free는 현재 하루 5M rows read / 100K rows written 한도를 가지고 있고, 2026-09-01부터 이 daily limit 초과 시 query 자체가 실패한다. 따라서 full table scan을 피하도록 index를 필수로 구성한다.
+The original design assumes D1 Free limits of 5 million rows read and 100,000 rows written per day, with queries failing when daily limits are exceeded from September 1, 2026. Indexes are required to avoid full-table scans. Check current Cloudflare limits before deployment.
 
 ---
 
 # 17. Webhook Processing
 
-Queue consumer는 webhook message를 다음 순서로 처리한다.
+The queue consumer processes webhook messages in this order:
 
 ```text
 1. events INSERT OR IGNORE
-2. duplicate 여부 확인
-3. field_changes 생성
+2. check for duplicates
+3. create field_changes
 4. entity snapshot upsert
 5. commit
 ```
 
-동일 `deliveryId`가 이미 존재하면:
+If the same `deliveryId` already exists, acknowledge the message and stop:
 
 ```text
 ACK
 ```
 
-하고 종료한다.
-
 ---
 
 # 18. Remove Event Handling
 
-Linear `remove` webhook을 받았다고 snapshot row를 즉시 DELETE하지 않는다.
+Do not immediately DELETE snapshot rows when a Linear `remove` webhook arrives.
 
-soft-delete한다.
+Use soft deletion.
 
-예:
+Example:
 
 ```text
 issues.deleted_at = occurredAt
 ```
 
-이유:
+Reasons:
 
-- 과거 주간 보고 재현
-- event history reference 유지
-- 삭제된 issue가 과거 report에 등장할 수 있음
+- Reproduce historical weekly reports
+- Preserve references from event history
+- Allow deleted issues to appear in historical reports
 
-MCP의 현재 상태 query에서는:
+Current-state MCP queries must use:
 
 ```sql
 WHERE deleted_at IS NULL
 ```
 
-조건을 사용한다.
-
 ---
 
 # 19. Initial History Limitation
 
-Initial sync는 과거 변경 이력을 backfill하지 않는다.
+Initial sync does not backfill historical changes.
 
-예를 들어 서비스를:
+For example, if the service is installed on:
 
 ```text
 2026-10-01
 ```
 
-에 설치했다면:
+it may not know past assignee or state changes during:
 
 ```text
 2026-09-01 ~ 2026-09-30
 ```
 
-의 과거 assignee/state change를 알 수 없을 수 있다.
-
-Initial sync 시:
+During initial sync, store:
 
 ```text
 meta.tracking_started_at
 ```
 
-을 저장한다.
-
-MCP에서 요청 기간이 이보다 이전이면 결과에:
+If the period requested through MCP begins before tracking started, return:
 
 ```json
 {
@@ -1313,9 +1291,7 @@ MCP에서 요청 기간이 이보다 이전이면 결과에:
 }
 ```
 
-를 반환한다.
-
-tracking 시작 이후 기간은:
+For a period after tracking started, return:
 
 ```json
 {
@@ -1326,17 +1302,15 @@ tracking 시작 이후 기간은:
 }
 ```
 
-로 반환한다.
-
 ---
 
 # 20. Progress Definitions
 
-Project / Milestone 진행률은 서버에서 deterministic하게 계산한다.
+Calculate project and milestone progress deterministically on the server.
 
 ## Eligible issue
 
-다음 issue만 denominator에 포함한다.
+Include only these issues in the denominator:
 
 ```text
 deleted_at IS NULL
@@ -1352,7 +1326,7 @@ completed issue count
 eligible issue count
 ```
 
-예:
+Example:
 
 ```text
 8 / 12 = 66.7%
@@ -1360,7 +1334,7 @@ eligible issue count
 
 ## Estimate progress
 
-estimate 합계가 0보다 클 때:
+When the total estimate is greater than zero:
 
 ```text
 completed estimates
@@ -1368,15 +1342,13 @@ completed estimates
 total estimates
 ```
 
-estimate가 사용되지 않는 프로젝트라면:
+If the project does not use estimates, return:
 
 ```json
 "estimateProgress": null
 ```
 
-을 반환한다.
-
-estimate 없는 issue를 임의로 1 point로 계산하지 않는다.
+Do not assign an arbitrary one-point estimate to issues without an estimate.
 
 ## Status buckets
 
@@ -1388,15 +1360,15 @@ completed
 canceled
 ```
 
-별 count를 반환한다.
+Return a separate count for each of these status buckets.
 
 ---
 
 # 21. Stale Work Definition
 
-현재 `started` 상태인데 마지막 activity가 오래된 issue를 stale 후보로 표시한다.
+Flag issues that are currently `started` but have had no recent activity as stale candidates.
 
-기본값:
+Default:
 
 ```text
 STALE_ISSUE_DAYS=5
@@ -1411,7 +1383,7 @@ MAX(
 )
 ```
 
-계산 결과:
+Calculated result:
 
 ```json
 {
@@ -1420,15 +1392,15 @@ MAX(
 }
 ```
 
-단 `stale`은 Issue가 잘못되었다거나 팀원의 성과가 낮다는 평가가 아니다.
+The `stale` flag does not indicate a problem with the issue or poor performance by a team member.
 
-단순히 최근 변경이 없었다는 사실만 의미한다.
+It only means that no recent change was observed.
 
 ---
 
 # 22. Member Resolution
 
-MCP input에서 사용자는 다음 중 하나를 사용할 수 있다.
+MCP inputs can identify a member using any of the following:
 
 ```text
 Linear user ID
@@ -1437,7 +1409,7 @@ display name
 full name
 ```
 
-resolution 순서:
+Resolution order:
 
 ```text
 exact ID
@@ -1449,11 +1421,11 @@ exact display name
 exact name
 ```
 
-부분 문자열 fuzzy matching은 MVP에서 하지 않는다.
+Do not use substring or fuzzy matching in the MVP.
 
-여러 사용자가 매칭되면 임의로 선택하지 않는다.
+If multiple users match, do not pick one arbitrarily.
 
-예:
+Example:
 
 ```json
 {
@@ -1472,7 +1444,7 @@ exact name
 
 # 23. Project / Milestone Resolution
 
-동일한 원칙을 사용한다.
+Apply the same resolution principles.
 
 Project:
 
@@ -1488,19 +1460,19 @@ exact ID
 exact name within resolved project
 ```
 
-ambiguous한 경우 자동 선택하지 않는다.
+Do not automatically select an ambiguous match.
 
 ---
 
 # 24. MCP Tools
 
-MVP MCP server는 정확히 다음 6개의 tool을 제공한다.
+The MVP MCP server provides exactly these six tools.
 
 ---
 
 ## 24.1 get_team_current_work
 
-현재 팀원별 진행 중 issue 조회.
+Retrieve the issues currently in progress for each team member.
 
 Input:
 
@@ -1520,7 +1492,7 @@ Schema:
 }
 ```
 
-현재 진행 중의 정의:
+Definition of currently in progress:
 
 ```text
 workflow_state.type = started
@@ -1528,7 +1500,7 @@ AND deleted_at IS NULL
 AND assignee_id IS NOT NULL
 ```
 
-Output 예:
+Example output:
 
 ```json
 {
@@ -1542,11 +1514,11 @@ Output 예:
       "issues": [
         {
           "id": "...",
-          "identifier": "PAY-123",
-          "title": "...",
+          "identifier": "SHOP-123",
+          "title": "Add guest checkout",
           "state": "In Progress",
-          "project": "Custody",
-          "milestone": "Beta",
+          "project": "Storefront",
+          "milestone": "Checkout",
           "priority": 2,
           "estimate": 3,
           "updatedAt": "...",
@@ -1564,7 +1536,7 @@ Output 예:
 
 # 24.2 get_member_activity
 
-특정 팀원의 기간별 activity 조회.
+Retrieve a member's activity over a specified period.
 
 Input:
 
@@ -1576,7 +1548,7 @@ Input:
 }
 ```
 
-`from`, `to`는 `REPORT_TIMEZONE` 기준 calendar date로 해석한다.
+Interpret `from` and `to` as calendar dates in `REPORT_TIMEZONE`.
 
 Output:
 
@@ -1603,7 +1575,7 @@ Input:
 
 ```json
 {
-  "project": "Custody"
+  "project": "Storefront"
 }
 ```
 
@@ -1613,7 +1585,7 @@ Output:
 {
   "project": {
     "id": "...",
-    "name": "Custody",
+    "name": "Storefront",
     "startDate": "...",
     "targetDate": "..."
   },
@@ -1633,7 +1605,7 @@ Output:
 }
 ```
 
-`canceled` issue는 denominator에서 제외하되 별도 count로 반환한다.
+Exclude `canceled` issues from the denominator, but return their count separately.
 
 ---
 
@@ -1643,8 +1615,8 @@ Input:
 
 ```json
 {
-  "project": "Custody",
-  "milestone": "Beta"
+  "project": "Storefront",
+  "milestone": "Checkout"
 }
 ```
 
@@ -1671,7 +1643,7 @@ Output:
 
 # 24.5 get_changes
 
-기간 동안 발생한 Linear 변경 조회.
+Retrieve Linear changes over a specified period.
 
 Input:
 
@@ -1686,7 +1658,7 @@ Input:
 }
 ```
 
-지원 field filter:
+Supported field filters:
 
 ```text
 assignee
@@ -1718,8 +1690,8 @@ Output:
     {
       "occurredAt": "...",
       "issue": {
-        "identifier": "PAY-123",
-        "title": "..."
+        "identifier": "SHOP-123",
+        "title": "Add guest checkout"
       },
       "actor": {},
       "field": "state",
@@ -1736,13 +1708,13 @@ Output:
 }
 ```
 
-가능한 경우 ID만 반환하지 말고 snapshot table을 join해서 human-readable name을 함께 반환한다.
+Where possible, join snapshot tables to return human-readable names alongside IDs.
 
 ---
 
 # 24.6 get_weekly_report
 
-주간 보고를 위한 structured context와 deterministic Markdown 초안을 반환한다.
+Return structured context and a deterministic Markdown draft for a weekly report.
 
 Input:
 
@@ -1753,7 +1725,7 @@ Input:
 }
 ```
 
-또는:
+Alternatively:
 
 ```json
 {
@@ -1762,7 +1734,7 @@ Input:
 }
 ```
 
-한 주는:
+A week runs from:
 
 ```text
 Monday 00:00
@@ -1770,7 +1742,7 @@ Monday 00:00
 Sunday 23:59:59
 ```
 
-`REPORT_TIMEZONE` 기준이다.
+Interpret these boundaries in `REPORT_TIMEZONE`.
 
 Output:
 
@@ -1800,32 +1772,28 @@ Output:
 
 ## completed
 
-기간 안에:
+Issues that had the following transition during the period:
 
 ```text
 state
 X → completed
 ```
 
-전환이 있었던 issue.
-
 ---
 
 ## started
 
-기간 안에:
+Issues that had the following transition during the period:
 
 ```text
 backlog/unstarted → started
 ```
 
-전환이 있었던 issue.
-
 ---
 
 ## reopened
 
-다음 형태:
+These transitions count as reopened:
 
 ```text
 completed → started
@@ -1837,7 +1805,7 @@ canceled → started
 
 ## scopeChanges
 
-다음 field 중 하나가 변경된 issue.
+Issues where any of the following fields changed:
 
 ```text
 project
@@ -1851,16 +1819,14 @@ due_date
 
 ## currentlyInProgress
 
-현재 snapshot 기준:
+Issues matching the current snapshot conditions:
 
 ```text
 assignee = member
 state.type = started
 ```
 
-인 issue.
-
-이는 report period 종료 시점의 historical 상태가 아니라 **현재 상태**임을 output에 명시한다.
+The output must explicitly state that this is the **current state**, rather than historical state at the end of the report period:
 
 ```json
 {
@@ -1872,39 +1838,39 @@ state.type = started
 
 # 26. Weekly Report Markdown
 
-서버 내부에서 LLM을 호출하지 않는다.
+Do not call an LLM inside the server.
 
-다음 template으로 deterministic Markdown을 생성한다.
+Generate deterministic Markdown using this template:
 
 ```markdown
-## 완료
+## Completed
 
-- PAY-123 — ...
-- PAY-124 — ...
+- SHOP-123 — Add guest checkout
+- SHOP-124 — Show product availability
 
-## 진행 시작
+## Started
 
-- PAY-130 — ...
+- SHOP-130 — Add cart quantity controls
 
-## 진행 중
+## In progress
 
-- PAY-131 — ...
+- SHOP-131 — Track order fulfillment
 
-## 주요 변경
+## Scope changes
 
-- PAY-132 — milestone: Alpha → Beta
-- PAY-140 — estimate: 3 → 8
+- SHOP-132 — milestone: Catalog → Checkout
+- SHOP-140 — estimate: 3 → 8
 ```
 
-해당 section에 항목이 없다면 section 자체를 생략한다.
+Omit a section if it has no items.
 
-MCP client는 이 초안을 자연어로 다시 작성할 수 있다.
+The MCP client may rewrite this draft in natural language.
 
 ---
 
 # 27. Event Attribution
 
-변경 event에는 가능하면:
+Where available, store the following on change events:
 
 ```text
 actor_id
@@ -1912,71 +1878,63 @@ actor_name
 actor_type
 ```
 
-을 저장한다.
-
-주의:
+Note that:
 
 ```text
 assignee = Alice
 ```
 
-라고 해서 Alice가 해당 변경을 직접 수행했다고 가정하면 안 된다.
+does not mean Alice made the change herself.
 
-예:
+For example:
 
 ```text
-Bob이 Alice에게 issue assign
+Bob assigns an issue to Alice
 ```
 
-일 수 있다.
-
-따라서:
+Distinguish:
 
 ```text
 actor
 ```
 
-와:
+from:
 
 ```text
 affected assignee
 ```
 
-를 구분한다.
-
 ---
 
 # 28. Member Activity Attribution
 
-팀원의 주간 업무를 계산할 때 단순히:
+When calculating a member's weekly work, do not rely only on:
 
 ```text
 actor_id = member
 ```
 
-만 사용하지 않는다.
+Example:
 
-예:
+If SHOP-123 is assigned to Alice and changes to Done, it may count as Alice's work activity regardless of who changed its state.
 
-Alice에게 할당된 PAY-123이 Done으로 변경된 경우, 누가 state 변경을 수행했든 Alice의 업무 activity에 포함될 수 있다.
+Use the issue's assignee history in the MVP.
 
-MVP에서는 issue의 assignee history를 이용한다.
+Determine the assignee at the time of the event as follows:
 
-Event 시점의 assignee 판단:
+1. For an assignee-change event, use its before and after values.
+2. Otherwise, use the most recent assignee change before that time.
+3. If no history exists, fall back to the current snapshot's assignee and mark it with `inferred=true`.
 
-1. assignee field 변경 event인 경우 before/after 이용
-2. 그 외에는 해당 시점 직전 최신 assignee change 이용
-3. history가 없으면 current snapshot assignee를 fallback으로 사용하되 `inferred=true` 표시
-
-tracking 시작 이전 issue에서는 historical attribution이 불완전할 수 있다.
+Historical attribution may be incomplete for issues that predate tracking.
 
 ---
 
 # 29. Error Contract
 
-MCP tool error는 exception text를 그대로 노출하지 않는다.
+Do not expose raw exception text in MCP tool errors.
 
-공통 error format:
+Common error format:
 
 ```json
 {
@@ -2007,15 +1965,15 @@ SYNC_NOT_READY
 INTERNAL_ERROR
 ```
 
-DB query 및 Linear API 내부 오류 상세는 server log로만 남긴다.
+Keep internal database query and Linear API error details in server logs only.
 
 ---
 
 # 30. Logging
 
-structured JSON logging을 사용한다.
+Use structured JSON logging.
 
-예:
+Example:
 
 ```json
 {
@@ -2027,7 +1985,7 @@ structured JSON logging을 사용한다.
 }
 ```
 
-다음 항목을 log하지 않는다.
+Do not log:
 
 ```text
 LINEAR_API_KEY
@@ -2044,38 +2002,36 @@ project update full body
 
 ## Linear Webhook
 
-반드시:
+Always perform:
 
 ```text
 HMAC-SHA256 signature validation
 timestamp validation
 ```
 
-을 수행한다.
+Verify the signature using the raw request body before parsing it.
 
-raw request body를 parsing 전에 signature 검증에 사용한다.
-
-Linear는 JSON을 다시 stringify하면 signature가 달라질 수 있으므로 raw body 검증을 권장한다.
+Linear recommends raw-body verification because reserializing JSON can change the signature.
 
 ## MCP
 
-Bearer token 필수.
+Require a bearer token.
 
 ## Admin API
 
-MCP token과 별도 admin token 사용.
+Use a separate admin token from the MCP token.
 
 ## Linear API
 
-read-only GraphQL query만 구현한다.
+Implement read-only GraphQL queries only.
 
-mutation을 작성하지 않는다.
+Do not implement mutations.
 
 ---
 
 # 32. Privacy / Data Minimization
 
-저장 대상:
+Store:
 
 ```text
 Issue title
@@ -2083,11 +2039,11 @@ Issue metadata
 User metadata
 Project metadata
 Milestone metadata
-Project Update 일부
+Partial Project Update content
 Change history
 ```
 
-저장하지 않는 대상:
+Do not store:
 
 ```text
 Issue description
@@ -2098,13 +2054,13 @@ Reaction
 raw webhook payload
 ```
 
-개발 중 debugging 목적으로 raw payload를 영구 저장하는 기능을 추가하지 않는다.
+Do not add permanent raw-payload storage for development or debugging.
 
 ---
 
 # 33. Cloudflare Configuration
 
-하나의 Worker:
+One Worker:
 
 ```text
 linear-eye
@@ -2129,15 +2085,15 @@ Queue:
 linear-eye-events
 ```
 
-Compatibility date는 구현 시 현재 날짜를 사용한다.
+Use the current date at implementation time as the compatibility date.
 
 ---
 
 # 34. Free Tier Constraints
 
-설계는 Cloudflare Workers Free를 우선 대상으로 한다.
+Prioritize Cloudflare Workers Free in the design.
 
-현재 Workers Free는 하루 100,000 requests와 invocation당 10ms CPU time 제한을 가진다.
+The design assumes Workers Free limits of 100,000 requests per day and 10 ms of CPU time per invocation. Verify current limits before deployment.
 
 D1 Free:
 
@@ -2147,11 +2103,9 @@ D1 Free:
 500 MB / database
 ```
 
-이다.
+The design assumes 10,000 operations per day and 24-hour message retention on Queues Free.
 
-Queues Free는 하루 10,000 operations를 제공하며 Free plan message retention은 24시간이다.
-
-따라서 MVP에서 다음 원칙을 지킨다.
+Follow these principles in the MVP:
 
 ```text
 No polling loop
@@ -2166,7 +2120,7 @@ Indexed analytics queries
 
 # 35. Repository Structure
 
-권장 구조:
+Suggested structure:
 
 ```text
 linear-eye/
@@ -2243,49 +2197,49 @@ linear-eye/
 
 # 36. Implementation Rules
 
-코딩 에이전트는 다음 규칙을 따라야 한다.
+Coding agents must follow these rules.
 
 ### Rule 1
 
-Webhook handler에서는 business query를 실행하지 않는다.
+Do not execute business queries in the webhook handler.
 
 ### Rule 2
 
-Linear API polling loop를 만들지 않는다.
+Do not create a Linear API polling loop.
 
 ### Rule 3
 
-GraphQL mutation을 구현하지 않는다.
+Do not implement GraphQL mutations.
 
 ### Rule 4
 
-MCP tool 안에서 Linear API를 직접 호출하지 않는다.
+Do not call the Linear API directly from an MCP tool.
 
-모든 MCP query는 D1 데이터만 사용한다.
+All MCP queries use D1 data only.
 
 ### Rule 5
 
-LLM API dependency를 추가하지 않는다.
+Do not add an LLM API dependency.
 
 ### Rule 6
 
-Issue description과 comment를 저장하지 않는다.
+Do not store issue descriptions or comments.
 
 ### Rule 7
 
-임의의 사용자를 fuzzy match해서 선택하지 않는다.
+Do not use fuzzy matching to select an arbitrary user.
 
 ### Rule 8
 
-Webhook retry에 대해 idempotent해야 한다.
+Webhook retries must be idempotent.
 
 ### Rule 9
 
-모든 report query는 tracking coverage를 반환한다.
+Every report query returns tracking coverage.
 
 ### Rule 10
 
-알 수 없는 Linear webhook field가 들어와도 webhook 전체가 실패해서는 안 된다.
+An unknown Linear webhook field must not cause the entire webhook to fail.
 
 ---
 
@@ -2293,7 +2247,7 @@ Webhook retry에 대해 idempotent해야 한다.
 
 ## Webhook verification
 
-테스트:
+Test:
 
 ```text
 valid signature → 200
@@ -2306,15 +2260,13 @@ expired timestamp → 401
 
 ## Idempotency
 
-동일:
+Process an event twice with the same:
 
 ```text
 Linear-Delivery
 ```
 
-event를 두 번 처리한다.
-
-결과:
+Expected result:
 
 ```text
 events = 1
@@ -2322,31 +2274,27 @@ field_changes duplicated = 0
 snapshot consistent
 ```
 
-이어야 한다.
-
 ---
 
 ## State transition
 
-입력:
+Input:
 
 ```text
 Todo → In Progress
 ```
 
-결과:
+Verify that this field change is created:
 
 ```text
 field_changes.field_name = state
 ```
 
-이 생성되는지 확인한다.
-
 ---
 
 ## Project progress
 
-데이터:
+Data:
 
 ```text
 Completed 6
@@ -2363,7 +2311,7 @@ completed = 6
 byCount = 0.6
 ```
 
-Canceled는 denominator에서 제외한다.
+Exclude canceled issues from the denominator.
 
 ---
 
@@ -2385,13 +2333,13 @@ expected:
 
 ## Weekly report
 
-다음 transition fixture를 생성한다.
+Create fixtures for the following transitions:
 
 ```text
 A: Todo → Started
 B: Started → Completed
 C: Completed → Started
-D: milestone Alpha → Beta
+D: milestone Catalog → Checkout
 ```
 
 expected:
@@ -2431,7 +2379,7 @@ expected:
 
 # 38. Observability
 
-최소 다음 metric을 로그 기반으로 확인 가능해야 한다.
+At minimum, the following metrics must be observable through logs:
 
 ```text
 webhook received
@@ -2450,15 +2398,15 @@ MCP tool called
 MCP tool failed
 ```
 
-MCP log에는 질문 내용 전체를 저장하지 않는다.
+Do not store the full question text in MCP logs.
 
-tool name과 latency 정도만 기록한다.
+Record only information such as the tool name and latency.
 
 ---
 
 # 39. README Requirements
 
-README에는 최소 다음 내용이 포함되어야 한다.
+The README must include at least:
 
 ```text
 What is linear-eye?
@@ -2489,35 +2437,35 @@ Available MCP tools
 Known limitations
 ```
 
-Linear webhook 설정 시 구독해야 하는 resource도 명시한다.
+Also specify which resources to subscribe to when configuring the Linear webhook.
 
 ---
 
 # 40. Setup Flow
 
-실제 사용자가 따라야 하는 설치 흐름은 다음이어야 한다.
+Users should follow this setup flow:
 
 ```text
 1. Clone repository
 
 2. pnpm install
 
-3. Cloudflare D1 생성
+3. Create a Cloudflare D1 database
 
-4. Queue 생성
+4. Create the queue
 
-5. migrations 적용
+5. Apply migrations
 
-6. Cloudflare secrets 등록
+6. Set Cloudflare secrets
 
    LINEAR_API_KEY
    LINEAR_WEBHOOK_SECRET
    MCP_AUTH_TOKEN
    ADMIN_AUTH_TOKEN
 
-7. Worker deploy
+7. Deploy the Worker
 
-8. Linear에서 webhook 생성
+8. Create a webhook in Linear
 
    URL:
    https://<worker>/webhooks/linear
@@ -2530,13 +2478,13 @@ Linear webhook 설정 시 구독해야 하는 resource도 명시한다.
 
 9. POST /admin/sync
 
-10. Sync completed 확인
+10. Confirm that sync completed
 
-11. MCP client에 연결
+11. Connect an MCP client
 
    https://<worker>/mcp
 
-12. MCP query 실행
+12. Run an MCP query
 ```
 
 ---
@@ -2545,40 +2493,38 @@ Linear webhook 설정 시 구독해야 하는 resource도 명시한다.
 
 ## Scenario A — Current work
 
-Linear 상태:
+Linear state:
 
 ```text
 Alice
-  PAY-10 In Progress
-  PAY-11 Todo
+  SHOP-10 In Progress
+  SHOP-11 Todo
 
 Bob
-  PAY-20 In Progress
+  SHOP-20 In Progress
 ```
 
-질문:
+Question:
 
 ```text
-현재 팀원들이 어떤 일을 하고 있어?
+What is each team member currently working on?
 ```
 
-MCP 결과에는:
+The MCP result must include:
 
 ```text
-Alice → PAY-10
-Bob   → PAY-20
+Alice → SHOP-10
+Bob   → SHOP-20
 ```
 
-가 포함되어야 한다.
-
-PAY-11은 제외되어야 한다.
+Exclude SHOP-11.
 
 ---
 
 ## Scenario B — Project Progress
 
 ```text
-Custody
+Storefront
 
 Done        6
 In Progress 2
@@ -2586,7 +2532,7 @@ Todo        2
 Canceled    1
 ```
 
-결과:
+Result:
 
 ```text
 progress by count = 60%
@@ -2596,7 +2542,7 @@ progress by count = 60%
 
 ## Scenario C — Changes
 
-PAY-123:
+SHOP-123:
 
 ```text
 Monday
@@ -2606,69 +2552,69 @@ Wednesday
 Alice → Bob
 
 Friday
-Beta → GA
+Checkout → Launch
 ```
 
-질문:
+Question:
 
 ```text
-이번 주 PAY-123에 무슨 변화가 있었어?
+What changed on SHOP-123 this week?
 ```
 
-세 변경이 시간 순서대로 반환되어야 한다.
+Return all three changes in chronological order.
 
 ---
 
 ## Scenario D — Weekly Report
 
-Alice가 이번 주:
+If Alice's work this week includes:
 
 ```text
-PAY-1 completed
-PAY-2 started
-PAY-3 estimate 3 → 8
-PAY-4 currently in progress
+SHOP-1 completed
+SHOP-2 started
+SHOP-3 estimate 3 → 8
+SHOP-4 currently in progress
 ```
 
-이었다면 weekly report context에 네 항목이 적절한 category로 나타나야 한다.
+the weekly report context must place all four items in the appropriate categories.
 
 ---
 
 # 42. Definition of Done
 
-MVP는 다음 조건을 모두 만족할 때 완료된 것으로 간주한다.
+The MVP is complete when all of the following are true:
 
-- Cloudflare Worker에 실제 deploy 가능하다.
-- D1 migration이 처음부터 재현 가능하다.
-- Linear API initial sync가 동작한다.
-- Issue snapshot이 생성된다.
-- Project snapshot이 생성된다.
-- Milestone snapshot이 생성된다.
-- User / Workflow State snapshot이 생성된다.
-- Linear webhook signature가 검증된다.
-- Webhook event가 Queue를 통해 처리된다.
-- Webhook retry가 중복 event를 만들지 않는다.
-- Issue 변경이 `field_changes`에 저장된다.
-- Snapshot이 webhook에 따라 갱신된다.
-- Daily reconciliation이 가능하다.
-- MCP가 bearer authentication을 요구한다.
-- 6개 MCP tool이 모두 구현된다.
-- Current work 조회가 가능하다.
-- Project progress 조회가 가능하다.
-- Milestone progress 조회가 가능하다.
-- 기간별 change 조회가 가능하다.
-- Member activity 조회가 가능하다.
-- Weekly report context 생성이 가능하다.
-- Weekly report Markdown draft 생성이 가능하다.
-- 모든 report가 coverage 정보를 반환한다.
-- 핵심 domain logic에 unit test가 존재한다.
-- README만 보고 새 환경에 deploy할 수 있다.
+- It can be deployed as a Cloudflare Worker.
+- D1 migrations are reproducible from an empty database.
+- Initial sync through the Linear API works.
+- Issue snapshots are created.
+- Project snapshots are created.
+- Milestone snapshots are created.
+- User and workflow-state snapshots are created.
+- Linear webhook signatures are verified.
+- Webhook events are processed through the queue.
+- Webhook retries do not create duplicate events.
+- Issue changes are stored in `field_changes`.
+- Webhooks update snapshots.
+- Daily reconciliation is available.
+- MCP requires bearer authentication.
+- All six MCP tools are implemented.
+- Current work can be queried.
+- Project progress can be queried.
+- Milestone progress can be queried.
+- Changes can be queried by period.
+- Member activity can be queried.
+- Weekly report context can be generated.
+- Weekly report Markdown drafts can be generated.
+- All reports return coverage information.
+- Core domain logic has unit tests.
+- A user can deploy to a new environment using only the README.
 
 ---
 
 # 43. Implementation Priority
 
-구현은 다음 순서로 진행한다.
+Implement in this order:
 
 ```text
 Phase 1
@@ -2721,15 +2667,15 @@ README
 deployment verification
 ```
 
-MCP부터 먼저 구현하지 않는다.
+Do not start with MCP.
 
-데이터 수집과 deterministic intelligence layer를 먼저 완성한다.
+Complete data collection and the deterministic intelligence layer first.
 
 ---
 
 # 44. Architectural Boundary
 
-최종 dependency 방향은 다음을 유지한다.
+Maintain this dependency direction:
 
 ```text
 HTTP / Webhook
@@ -2747,7 +2693,7 @@ Repository
 D1
 ```
 
-MCP는 별도의 business logic을 가지지 않는다.
+MCP contains no separate business logic.
 
 ```text
 MCP Tool
@@ -2757,9 +2703,9 @@ Intelligence Service
 Repository
 ```
 
-형태로 동작한다.
+Use this call flow.
 
-Webhook에서도 동일하다.
+Apply the same boundary to webhooks:
 
 ```text
 Queue Consumer
@@ -2773,7 +2719,7 @@ Repository
 
 # 45. Future Extensions
 
-MVP 이후 자연스럽게 추가할 수 있는 기능은 다음과 같다.
+The following features can be added after the MVP:
 
 ```text
 stale issue detection
@@ -2803,37 +2749,37 @@ OAuth multi-workspace
 web dashboard
 ```
 
-특히 `snapshot + field_changes` 구조를 유지하면 이후 다음과 같은 질문도 지원할 수 있다.
+Keeping the `snapshot + field_changes` structure should make it possible to answer questions such as:
 
 ```text
-이번 milestone에서 scope가 얼마나 증가했어?
+How much has the scope of this milestone increased?
 
-이번 달에 estimate가 크게 증가한 이슈는?
+Which issues had large estimate increases this month?
 
-완료됐다가 reopen된 이슈는?
+Which completed issues were reopened?
 
-최근 2주 동안 담당자가 자주 변경된 이슈는?
+Which issues frequently changed assignee over the past two weeks?
 
-5일 이상 진행 상태에서 변경이 없는 이슈는?
+Which issues have been in progress with no changes for at least five days?
 
-지난주 대비 프로젝트 진행도가 어떻게 바뀌었어?
+How has project progress changed since last week?
 ```
 
-이러한 기능은 MVP schema를 크게 변경하지 않고 추가할 수 있어야 한다.
+These features should be possible without major changes to the MVP schema.
 
 ---
 
 # 46. Product Principle
 
-`linear-eye`는 팀원을 평가하는 시스템이 아니다.
+`linear-eye` is not a system for evaluating team members.
 
-목적은:
+Its purpose is not to judge:
 
 ```text
 Who is doing poorly?
 ```
 
-를 판단하는 것이 아니라:
+It should help the team quickly answer:
 
 ```text
 What is happening?
@@ -2843,9 +2789,7 @@ Where is work accumulating?
 What should the team know?
 ```
 
-에 빠르게 답하는 것이다.
-
-따라서 MCP output은 가능한 한 관찰 가능한 사실을 반환해야 하며, 개인의 성과나 업무 능력을 자체적으로 점수화하지 않는다.
+MCP outputs should therefore return observable facts wherever possible, without assigning scores to individual performance or ability.
 
 ---
 

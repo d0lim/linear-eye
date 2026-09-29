@@ -46,8 +46,8 @@ describe('stateless authenticated MCP', () => {
   it('runs all six tools against D1 without requesting Linear', async () => {
     await seed("INSERT INTO meta(key,value,updated_at) VALUES('tracking_started_at','2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z'),('last_full_sync_completed_at','2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z')");
     await seed("INSERT INTO users(id,name,email) VALUES('alice','Alice','alice@example.com')");
-    await seed("INSERT INTO projects(id,name) VALUES('p','Custody')");
-    await seed("INSERT INTO project_milestones(id,project_id,name) VALUES('m','p','Beta')");
+    await seed("INSERT INTO projects(id,name) VALUES('p','Storefront')");
+    await seed("INSERT INTO project_milestones(id,project_id,name) VALUES('m','p','Checkout')");
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const calls = [
       ['get_team_current_work', {}],
